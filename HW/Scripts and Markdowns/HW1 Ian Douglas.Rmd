@@ -1,0 +1,54 @@
+---
+title: "HW 1 Ian Douglas"
+output: html_notebook
+---
+###Homework 1
+Question 3.1, pg. 91
+```{r}
+eta <- .4
+theta <- 3
+n <- 1000
+u <- runif(n)
+x <- (-log(u)/theta) + eta
+y <- seq(0,3,.01)
+hist(x, prob = TRUE, main = expression(f(x)==theta^(-theta*(x-η))), xlim = c(0,3), ylim = c(0, 4))
+lines(y, theta*exp(-theta*(y-eta)))
+abline(v = eta, col = "blue", lty = 2)
+abline(h = theta, col = "blue", lty = 2)
+```
+
+###Additional question 2
+```{r}
+set.seed(37)
+n <- 10000
+nu <- 5
+X <- matrix(rnorm(n*nu), n, nu)^2 
+y <- rowSums(X)
+#estimate of the mean:
+mean(y)*2
+#estimate of the variance:
+2*mean(y)
+
+#plot with appropriate Chi-Sq: df = n-1 = 4
+par(mfrow=c(1,2))
+x <- seq(0, 24, by = 0.1)
+hist(y, col = rgb(.6,.6,.6, alpha = 1),border = rgb(.2,.2,.2, alpha = 1))
+plot(x, y = dchisq(x,df = 4), type = "l",col = "blue")
+
+#bias of the mean and variance estimates:
+mean(y) - 5
+2*mean(y) - 10
+```
+###Additional question 3
+```{r}
+plot(density(rexp(10000,1)), xlim = c(0,10), lwd =2, main = expression(f(x)==lambda*e^(-lambda*x)))
+lines(x=seq(0,10,by=.01),dexp(seq(0,10,by=.01)),col = 'blue', lwd = 1)
+```
+###Additional question 
+```{r}
+Y <- cbind(rnorm(n=10000),rnorm(n=10000))
+Y2 <- Y*Y
+Y3 <- rowSums(Y2)
+mean(sqrt(Y3))
+#estimate is approximately 1.25
+```
