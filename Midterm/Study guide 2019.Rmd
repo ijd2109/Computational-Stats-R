@@ -1,0 +1,214 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+#Introduction   
+
+###R functions for the known probability distributions
+```{r}
+#random generation from known Chi-square distribution
+x <- rchisq(100, df=20) #arguments are n and degrees of freedom
+
+#dchisq takes random observations from a distribution (or a sequence of #'s) #and returns the probabilities that would be associated with those numbers
+# according to a given pdf, with parameters you set.
+pdf = dchisq(x, df = 20)
+
+#pchisq also takes a vector of values, but this time assigns the
+#associated value from the specified CDF
+cdf = pchisq(x, df =20)
+
+#qchisq takes probabilities (values form 0 to 1) and assigns the value of
+#the random variable that would be associated with the quantile equivalent
+#to the probability provided to the function
+#So for qchisq, df = 20, entering: .01, .1, .25, .5, .75, .9, and .99
+# should return numbers like 5, 12, 15, 20, 23, 27, 35 ... [20 is the mean]
+q <- qchisq(seq(.01,.99,length.out=100),df=20)
+```
+###Visualization
+```{r}
+par(mfrow=c(2,2))
+hist(x, main = "distribution of x")
+plot(x,pdf, main = "pdf")
+lines(density(x),col = "blue",lty=2,lwd=2) #density() can be used for a curve
+plot(x,cdf, main = "CDF")
+plot(q,sort(x), main = "Q-Q plot") #equivalent to qqplot() function
+abline(0,1, col = "2") #add the 45-degree line (for reference)
+```   
+
+
+#Topic 1 - Methods of Simulation
+###Inverse Transform Method
+```{r}
+# 1. Take the antiderivative of the pdf (the CDF)
+# 2. Take the inverse of that CDF
+# 3. For this CDF, substitute runif(n) for x
+# 4. The n random-uniform X's will be transformed to the original pdf
+# Note: the inverse function of a function can be found using optim()
+
+pdf <- function(x) {3 * x^2}
+CDF <- function(x) {x^3}
+#In this case the inverse is a known result (no need to solve for it)
+inverse <- function(x) {x^(1/3)}
+# To produce a random sample from the pdf f(x)=(3 * x^2) of size 100000
+sample <- inverse(runif(100000))
+hist(sample, prob = T, main = expression(f(x)==3 * x^2))
+x <- seq(0,1,.01)
+lines(x, 3*x^2, col = "blue", lwd = 2) #overlay the pdf
+```
+   
+Mathematically, this procedure is based on the fact that the CDF is
+a function of x that returns the probability of x. So its inverse is
+a function that takes a probability (between 0 and 1) and returns x!
+Thus, entering a random uniform variable between 0 and 1 into the 
+inverse CDF of x will generate a random x from its distribution.
+
+###Generate a normal distribution: sums of uniform samples
+```{r}
+#The sums of uniform random random samples will be normally dist.
+Y = matrix(runif(100000 * 100), nrow=100000, ncol=100)
+X <- rowSums(Y)
+plot(density(X), col = "blue", lwd = 2,main="sums of uniform samples")
+```
+   
+   
+#Topic 2: Monte Carlo simulation
+
+1. Sample randomly from a known (or theorized) distribution (many times!)
+2. Compute measures of bias etc for the resulting parameters estimated
+a) Bias = E[theta.hat - theta]
+b) SD = sqrt(E[(theta.hat - theta)^2])
+c) MSE = E[(theta.hat - theta)^2]
+Note, MSE is approx = (SD)^2 + Bias^2
+
+###Example 
+-Evaluate s^2 as an estimate of sigma^2 for a standard normal pop.
+```{r}
+#create function to produce a vector of s^2 estimates, from a specified # of
+#ind. rnorm samples; all with the same n, mu, and SD parameters:
+s.2.estimates <- function(n, replications){
+  R <- replications
+  out <- NULL #empty object for generating output list
+  #compute R s^2 estimates
+  for (i in 1:R) {
+    x <- rnorm(n, 0 , 1) #generate random normal, size = n, mu = 0, sd = 1
+    mean <- mean(x) #mean for the first of R samples
+    deviations <- x - mean #compute the distance of each x from the mean
+    sq.devs <- deviations^2 #square the deviations from the mean
+    out[i] <- sum(sq.devs)/(n-1) #sum the squares, and divide by n - 1
+  }
+  bias.estimate <- mean(out) - 1 #compute bias over all estimates of s^2
+  sd.estimate <- sqrt((1/(R-1))*(sum((out-mean(out))^2)))
+  mse.estimate <- sd.estimate^2 + bias.estimate^2 # variance + bias^2
+  #create output object (named list in this case)
+  return(list(s.2.estimates = out,
+              Bias = bias.estimate,
+              SD = sd.estimate,
+              MSE = mse.estimate,
+              n = n,
+              R = replications))
+}
+run1 <- s.2.estimates(n = 100, replications  = 10000)
+str(run1)
+```
+```{r}
+mean(run1$s.2.estimates)
+# [1] 0.9980755
+```
+   
+By running this computation 10000 times, we confirm the sample variance is a
+relatively unbiased estimator, as theorized. 
+
+Additionally, the theoretical variance and MSE of the s^2 estimate are both:
+(2*(sigma^2))/(n - 1)
+
+In this case this comes out to 2/99 = .02; and sqrt(.02) = .14, the SD obtained.
+
+#Topic 3: Optimization (univariate/two-dimensional)
+
+###Method 1: Golden Section [USES ONLY f(x)]
+1. Iteratively finds a MINIMUM
+2. Evaluates the function at startings points a0 and b0
+3. Moves to a1 and b1
+4. If f(a1) < f(b1), then it assumes the minimum is between [a0 and b1]
+4. Now b1 becomes b0, search in contracted interval between a0 and new b0
+5. Continue until the distance between a0 and b0 is less than some
+ previously set criteria. When the distance is approximately zero,
+ f(a) and f(b) will be converging to the minimum value of f.
+
+ Choose the distance by which each iteration will reduce the length of the interval
+
+ Ending distances can thus be (1 - distance)^N by the the Nth iteration.
+ Set up the function of f, starting interval, and ending length (distance)
+
+
+###Method 2: Bisection [USES f(x) and f'(x)]
+1. f(x) must be unimodal
+2. f(x) is two-dimensional
+3. Finds the MINIMUM by:
+a) evaluating f'(x)
+b) stopping when f'(x) = 0.
+
+  Essentially the same process as the golden section, except that it selects one
+point evaluate, assesses the direction of the slope (+/-), and if negative
+chooses to evaluate f'(x) at a point further right, and as point further left
+if the slope of f'(x) was posiitive.
+
+#Method 3: Newton's method
+1. Given $f(x)$, define $q(x)$ such that at $x_i$:
+$$q(x) = f(x_i) + f'(x_i)(x - x_i) + \frac{1}{2}f''(x_i)(x - x_i)^2$$
+This function approximates the trajectory of (is tangnt to) $f(x)$ at 
+each given point.
+
+Thus:   
+
+ I. $q'(x) = f'(x)$   
+II. $q''(x) = f''(x)$
+  
+2. Minimize $q(x)$ by setting its derivative equal to zero:
+$$q'(x) = 0 = f'(x_i) + f''(x_i)(x - x_i)$$
+From this formula we obtain:
+$$x = x_i - \frac{f'(x_i)}{f''(x_i)}$$
+EXAMPLE 1.
+$f(x) = x^4-14x^3+60x^2-70x$
+$f'(x) = 4x^3-42x^2+120x-70$
+$f''(x) = 12x^2-84x+120$
+
+```{r, echo = FALSE}
+curve(x^4-14*x^3+60*x^2-70*x,xlim=c(0,5), ylim=c(-30,40),lwd=3,main ="f(x) and q(x) for x{i}=.5",ylab="y")
+par(new=T)
+curve((.5)^4-14*(.5)^3+60*(.5)^2-70*(.5) + (4*(.5)^3-42*(.5)^2+120*(.5)-70)*(x-.5) + (.5)*(12*(.5)^2-84*(.5)+120)*((x-.5)^2),xlim=c(0,5), col=3,lty=3,ylim=c(-30,40),lwd=3,ylab="y")
+```
+When $f(x_i) = .5$, $q(x)$ has a minimum at .75.
+
+PROOF; when $q'(x) = 0$:
+$$x = x_i - \frac{f'(x_i)}{f''(x_i)} = x_i - \frac{4x_i^3-42x_i^2+120x_i-70}{12x_i^2-84x_i+120}$$
+$$x =.5- \frac{4(.5)^3-42(.5)^2+120(.5)-70}{12(.5)^2-84(.5)+120}$$
+$$x = .5-\frac{-20}{81} = .75$$
+
+Thus, $x = .75$, when $q'(x) = 0$, given that $q(x)$ was constructed with $f(x_=.5)$
+
+3. The Newton method then takes .75 as the new "$x_i$" [or "$x_i+1$"], and repeats the process until q'(x) is minimized.
+```{r,echo=F}
+newton <- function(f_prime, f_dbl, start, precision = 1e-5) {
+  f1 <- function(x) (f_prime)
+  f2 <- function(x) (f_dbl)
+  x_old <- start #The first x to be tested
+  i <- 0 #For counting the iterations
+  # while {
+  #   x_new <- x_old - f1(x_old)/f2(x_old)
+  #   diff <- x_new - x_old
+  #   i <- i + 1
+  #   if (diff <= precision){
+  #     break
+  #     } 
+  #}
+  x_new <- x_old - f1(x=x_old)/f2(x=x_old)
+  diff <- x_new - x_old
+  print(abs(diff) <= precision)
+  
+}
+```
+
+
+
+
