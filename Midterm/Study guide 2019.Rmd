@@ -24,6 +24,7 @@ cdf = pchisq(x, df =20)
 # should return numbers like 5, 12, 15, 20, 23, 27, 35 ... [20 is the mean]
 q <- qchisq(seq(.01,.99,length.out=100),df=20)
 ```
+
 ###Visualization
 ```{r}
 par(mfrow=c(2,2))
@@ -33,11 +34,13 @@ lines(density(x),col = "blue",lty=2,lwd=2) #density() can be used for a curve
 plot(x,cdf, main = "CDF")
 plot(q,sort(x), main = "Q-Q plot") #equivalent to qqplot() function
 abline(0,1, col = "2") #add the 45-degree line (for reference)
-```   
+```
+
 
 
 #Topic 1 - Methods of Simulation
 ###Inverse Transform Method
+
 ```{r}
 # 1. Take the antiderivative of the pdf (the CDF)
 # 2. Take the inverse of that CDF
@@ -55,6 +58,7 @@ hist(sample, prob = T, main = expression(f(x)==3 * x^2))
 x <- seq(0,1,.01)
 lines(x, 3*x^2, col = "blue", lwd = 2) #overlay the pdf
 ```
+
    
 Mathematically, this procedure is based on the fact that the CDF is
 a function of x that returns the probability of x. So its inverse is
@@ -63,12 +67,14 @@ Thus, entering a random uniform variable between 0 and 1 into the
 inverse CDF of x will generate a random x from its distribution.
 
 ###Generate a normal distribution: sums of uniform samples
+
 ```{r}
 #The sums of uniform random random samples will be normally dist.
 Y = matrix(runif(100000 * 100), nrow=100000, ncol=100)
 X <- rowSums(Y)
 plot(density(X), col = "blue", lwd = 2,main="sums of uniform samples")
 ```
+
    
    
 #Topic 2: Monte Carlo simulation
@@ -110,10 +116,12 @@ s.2.estimates <- function(n, replications){
 run1 <- s.2.estimates(n = 100, replications  = 10000)
 str(run1)
 ```
+
 ```{r}
 mean(run1$s.2.estimates)
 # [1] 0.9980755
 ```
+
    
 By running this computation 10000 times, we confirm the sample variance is a
 relatively unbiased estimator, as theorized. 
@@ -138,7 +146,12 @@ In this case this comes out to 2/99 = .02; and sqrt(.02) = .14, the SD obtained.
  Choose the distance by which each iteration will reduce the length of the interval
 
  Ending distances can thus be (1 - distance)^N by the the Nth iteration.
- Set up the function of f, starting interval, and ending length (distance)
+ Set up the function of f, starting interval, and ending length (distance)   
+ 
+####Summary: 
+  -Compares the value of $f(x)$ at ends of a random interval [a, b]
+  -If $f(a) > f(b)$, constrict the next search interval to [a, $\frac{b-a}{2}$]
+  -End when $f(a)=f(b)$ (or when f(a) - f(b) is very near zero. 
 
 
 ###Method 2: Bisection [USES f(x) and f'(x)]
@@ -147,13 +160,17 @@ In this case this comes out to 2/99 = .02; and sqrt(.02) = .14, the SD obtained.
 3. Finds the MINIMUM by:
 a) evaluating f'(x)
 b) stopping when f'(x) = 0.
+####Summary: 
+  -Compares the slope of $f'(x)$ at ends of a random interval [a, b]
+  -If the slope at a (or b) is negative, proceed towards the minimum
+  -End when $f'(x)=0$.
 
   Essentially the same process as the golden section, except that it selects one
 point evaluate, assesses the direction of the slope (+/-), and if negative
 chooses to evaluate f'(x) at a point further right, and as point further left
 if the slope of f'(x) was posiitive.
 
-#Method 3: Newton's method
+###Method 3: Newton's method
 1. Given $f(x)$, define $q(x)$ such that at $x_i$:
 $$q(x) = f(x_i) + f'(x_i)(x - x_i) + \frac{1}{2}f''(x_i)(x - x_i)^2$$
 This function approximates the trajectory of (is tangnt to) $f(x)$ at 
@@ -173,10 +190,12 @@ $f(x) = x^4-14x^3+60x^2-70x$
 $f'(x) = 4x^3-42x^2+120x-70$
 $f''(x) = 12x^2-84x+120$
 
+
 ```{r, echo = FALSE}
 curve(x^4-14*x^3+60*x^2-70*x,xlim=c(0,5), ylim=c(-30,40),lwd=3,main ="f(x) and q(x) for x{i}=.5",ylab="y")
 par(new=T)
 curve((.5)^4-14*(.5)^3+60*(.5)^2-70*(.5) + (4*(.5)^3-42*(.5)^2+120*(.5)-70)*(x-.5) + (.5)*(12*(.5)^2-84*(.5)+120)*((x-.5)^2),xlim=c(0,5), col=3,lty=3,ylim=c(-30,40),lwd=3,ylab="y")
+
 ```
 When $f(x_i) = .5$, $q(x)$ has a minimum at .75.
 
@@ -188,27 +207,76 @@ $$x = .5-\frac{-20}{81} = .75$$
 Thus, $x = .75$, when $q'(x) = 0$, given that $q(x)$ was constructed with $f(x_=.5)$
 
 3. The Newton method then takes .75 as the new "$x_i$" [or "$x_i+1$"], and repeats the process until q'(x) is minimized.
-```{r,echo=F}
+###In R
+```{r}
 newton <- function(f_prime, f_dbl, start, precision = 1e-5) {
-  f1 <- function(x) (f_prime)
-  f2 <- function(x) (f_dbl)
-  x_old <- start #The first x to be tested
-  i <- 0 #For counting the iterations
-  # while {
-  #   x_new <- x_old - f1(x_old)/f2(x_old)
-  #   diff <- x_new - x_old
-  #   i <- i + 1
-  #   if (diff <= precision){
-  #     break
-  #     } 
-  #}
-  x_new <- x_old - f1(x=x_old)/f2(x=x_old)
+  #Compute the first iteration to obtain x and x_i, and their difference
+  x_old <- as.numeric(start)
+  x_new <- x_old - f_prime(x_old)/f_dbl(x_old)
   diff <- x_new - x_old
-  print(abs(diff) <= precision)
-  
+  i <- 1
+  #if the difference is above the desired precision, repeat
+  while (abs(diff) > precision) {
+    x_old <- x_new #switch the new value into the position of the old
+    x_new <- x_old - f_prime(x_old)/f_dbl(x_old) #compute a new, new value
+    i <- i + 1
+    diff <- x_new - x_old #compute a new difference, the while-loop will now restart 
+  }
+  return(list(x = x_new, iterations = 1))
 }
+newton(f_prime = function(x) (4*x^3-42*x^2+120*x-70),
+       f_dbl = function(x) (12*x^2-84*x+120),
+       start = .56)
 ```
 
+The output is a value of x where the min or max of $f(x)$ exists:
+```{r, echo=TRUE}
+f <- function(x) (x^4-14*x^3+60*x^2-70*x)
+curve(f,xlim=c(0,2), ylim=c(-30,10),lwd=3,main ="f(x) and f(.7808841)",ylab="y")
+par(new=T)
+abline(h = f(.7808841), lwd=3,lty=2,col=2)
+```
+   
+   
+###Issues:
+1. The Newton (or Newton-Raphson) method is better for finding local min or max
+```{r}
+#Test the function using starting points 1, 3.3, and 5.5:
+local.root <- NULL #This will capture the x value produced 
+for (i in 1:3) {
+  local.root[i]<- newton(f_prime = function(x) (4*x^3-42*x^2+120*x-70),
+       f_dbl = function(x) (12*x^2-84*x+120),
+       start = c(1, 3.3, 5.5)[i])$x
+}
+output <- matrix(local.root,ncol=1)
+rownames(output) <- c("Starting point 1:", "Starting point 3.3:",
+                      "Starting point 5.5:")
+colnames(output) <- c("Location of max/min")
+output
+```
+```{r, echo=F}
+par(mfrow = c(2,2))
+curve(f,xlim=c(0,1.5), ylim=c(-30,-10),lwd=3,main ="Starting point: 1",ylab="y")
+par(new=T)
+abline(h = f(local.root[1]), lwd=2,lty=2,col=2)
+curve(f,xlim=c(3,5), ylim=c(20,50),lwd=3,main ="Starting point: 3.3",ylab="y")
+par(new=T)
+abline(h = f(local.root[2]), lwd=2,lty=2,col=3)
+curve(f,xlim=c(5.5,6.25), ylim=c(11,14),lwd=3,main ="Starting point: 5.5",ylab="y")
+par(new=T)
+abline(h = f(local.root[3]), lwd=2,lty=2,col=4)
+curve(f,xlim=c(-1.5,7.5), ylim=c(-40,60),lwd=3,main ="Full illustration",ylab="y")
+par(new=T)
+abline(h = f(local.root[1]), lwd=2,lty=3,col=2)
+par(new=T)
+abline(h = f(local.root[2]), lwd=2,lty=3,col=3)
+par(new=T)
+abline(h = f(local.root[3]), lwd=2,lty=3,col=4)
+```
 
-
-
+###Method 4: Secant method
+This method is identical to the Newton method, except that when calculating the new value for x, use:
+$$x_{i+1} = x_i - \frac{x_i - x_{i-1}}{f(x_i) - f(x_{i-1})}f(x_i)$$
+   
+      
+#Topic 4: 
