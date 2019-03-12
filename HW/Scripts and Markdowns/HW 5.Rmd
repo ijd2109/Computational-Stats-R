@@ -72,15 +72,16 @@ for (i in 1:corrs$R) {
 }
 zr.mean <- mean(zr)
 int <- 1.96*sqrt(1/(nrow(returns)-3))
-Fisher.ci <- c(z-int,z+int)
+Fisher.ci <- c(zr.mean-int,zr.mean+int)
 Fisher.ci
 ```
    
-   ####Output shows a CI from -0.095 to .424
+   ####Output shows a CI from -0.096 to .424
    
 ##Part F
 ```{r}
 tanh(Fisher.ci)
+# [1] -0.09528203  0.39999647
 ```
    
    ####Compared to the CI in part D, the re-scaled Fisher CI is larger.
