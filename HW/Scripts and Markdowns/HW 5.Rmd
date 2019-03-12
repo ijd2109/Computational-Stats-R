@@ -1,0 +1,89 @@
+---
+title: "HW 5"
+author: "Ian Douglas"
+date: "3/11/2019"
+output: word_document
+---
+#HW 5
+####Read in data
+```{r}
+df <- read.table("~/Desktop/Grad School/Columbia/Spring 2019/Computational Stats/R/HW/Datasets/ebay.txt",header=T)
+#Define variables
+sp5 <- as.vector(df$SP500)
+ebay <- as.vector(df$EBAY)
+```
+##Part A
+$$Return_{Day_{i}} = \frac{Price_{Day_{i}}-Price_{Day_{i-1}}}{Price_{Day_{i-1}}}$$
+```{r}
+#Since the data is in chronologically descending order, index i PLUS 1 is
+#actually day i MINUS 1
+rtrn.sp5 <- NULL
+rtrn.ebay <- NULL
+for (i in 1:(nrow(df)-1)) {
+  rtrn.sp5[i] <- ((sp5)[i] - (sp5[i+1]))/(sp5[i+1])
+  rtrn.ebay[i] <- ((ebay)[i] - (ebay[i+1]))/(ebay[i+1])
+}
+returns <- cbind(matrix(rtrn.sp5,ncol=1),matrix(rtrn.ebay,ncol=1))
+colnames(returns) <- c("S&P 500", "Ebay Stock")
+rownames(returns) <- df$DATE[1:60]
+returns
+```
+   
+   ##Part B
+```{r}
+#Correlation between the two lists of returns
+cor(returns[,1],returns[,2])
+```
+   
+####Output shows a correlation of .3094   
+   
+   ##Part C
+```{r}
+#Estimate the SE of the correlation coefficient using 1000 bootstrap samples
+library("boot")
+cor.boot <- function(data, i){
+	dat <- data
+  dat2 <- dat[i,]
+  cor.boot <- cor(dat2[i,1],dat[i,2])
+	return(cor(dat2[,1], dat2[,2]))
+}
+
+corrs <- boot(returns, cor.boot, R=1000)
+SE <- sd(corrs$t[,1])/sqrt(corrs$R)
+SE
+```
+   
+   ####Output shows a SE of .003
+
+##Part D
+```{r}
+# Report the BCa 95% CI for the correlation coefficient:
+boot.ci(corrs, type="all")
+```
+   
+####Output shows the 95% BCa CI to be (.0473, .4705)
+
+##Part E
+Calculate $z_r±1.96\sqrt{\frac{1}{n-3}}$ where $z_r = \frac{1}{2}log\sqrt{\frac{1+r}{1-r}}$
+```{r}
+zr <- NULL
+for (i in 1:corrs$R) {
+  zr[i] <- (.5)*log(sqrt((1+mean(corrs$t[i,1]))/(1-mean(corrs$t[i,1]))))
+}
+zr.mean <- mean(zr)
+int <- 1.96*sqrt(1/(nrow(returns)-3))
+Fisher.ci <- c(z-int,z+int)
+Fisher.ci
+```
+   
+   ####Output shows a CI from -0.095 to .424
+   
+##Part F
+```{r}
+tanh(Fisher.ci)
+```
+   
+   ####Compared to the CI in part D, the re-scaled Fisher CI is larger.
+   It also crosses zero, bringing into question the statistical significance
+   of the correlation.
+   more
