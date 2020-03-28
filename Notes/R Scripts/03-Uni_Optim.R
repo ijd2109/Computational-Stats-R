@@ -150,7 +150,7 @@ bisection(f_prime, c(0, 2.5))
 ####### FUNCTION FOR NEWTON'S METHOD #####################
 ##########################################################
 
-newton <- function(f_prime, f_dbl, precision = 1e-6, start)
+newton.1 <- function(f_prime, f_dbl, precision = 1e-6, start)
 {
   # ::: f_prime is first derivative function
   # ::: f_dbl is second derivitive function
@@ -177,7 +177,7 @@ newton <- function(f_prime, f_dbl, precision = 1e-6, start)
 
 # Apply it:
 
-newton(f_prime, f_dbl, start = 1.5)
+newton.1(f_prime, f_dbl, start = 1.5)
 # Try different starting points to see what happens if you start too far away!
 
 

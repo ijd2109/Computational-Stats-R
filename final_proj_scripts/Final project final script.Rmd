@@ -1,0 +1,399 @@
+---
+title: "Final project final script"
+author: "Ian Douglas"
+date: "5/15/2019"
+output: html_document
+---
+#read in the cleaned data (and imputed)
+```{r}
+DF <- readRDS(file.choose())
+#convert factors back to numeric for scaling
+suppressPackageStartupMessages(library(tidyverse))
+suppressPackageStartupMessages(library(bestglm))
+suppressPackageStartupMessages(library(glmnet))
+classes <- NULL
+for (i in 1:ncol(DF)) {
+  classes[i] <- class(DF[,i])
+}
+
+
+DF1 <- DF %>% mutate_at(c(which(classes=="factor")),as.character) %>%
+  mutate_all(as.numeric)
+#rename y = C1SPWBU2
+names(DF1) <- c(names(DF1)[1:(which(names(DF1)=="C1SPWBU2")-1)], "y", names(DF1)[(which(names(DF1)=="C1SPWBU2")+1):ncol(DF1)])
+#remove the subscale of the y variable
+rm<- grep("C1SPWBU1", names(DF1))
+DF2 <- DF1[,-rm]
+#also remove subscales of PWB composite scores
+rm2 <- grep("PWB[A-Z]1", names(DF2))
+DF3 <- DF2[,-rm2]
+#reorder so the y variable is last
+DF4 <- DF3[,c(1:56,58:(ncol(DF3)),57)] #y was column 57
+#scale the data
+maxs <- apply(DF4, 2, max)
+mins <- apply(DF4, 2, min)
+Xy <- as.data.frame(scale(DF4, center = mins, scale = maxs - mins))
+unscaled.df <- DF4
+#remove variables too highly correlated:
+remove.vars <- c("C1PDEPAF", "C1PCHM1N", "C1PCHM1X", "C1PCHM2X", "C1SSATIS",
+            "C1SBADL1", "C1SCONS1", "C1SPERSI")
+
+#convert var names to var indices
+var.indices <- unlist(lapply(remove.vars, function(x) grep(x, names(Xy))))
+Xy <- Xy[-var.indices]
+unscaled.df <- unscaled.df[-var.indices]
+```
+#run lasso and ridge on full data to get a point of reference
+```{r}
+#These are thus 10-fold internally cross-validated
+#also note, exclude the ID variable
+lasso.fit <- cv.glmnet(x = as.matrix(Xy[,-c(1,ncol(Xy))]), 
+                       y = as.matrix(Xy[,ncol(Xy)]),
+                       family = "gaussian", alpha = 1)
+#ridge
+ridge.fit <- cv.glmnet(x = as.matrix(Xy[,-c(1,ncol(Xy))]), 
+                       y = as.matrix(Xy[,ncol(Xy)]),
+                       family = "gaussian", alpha = 0)
+#elastic net
+elastic.fit <- cv.glmnet(x = as.matrix(Xy[,-c(1,ncol(Xy))]), 
+                       y = as.matrix(Xy[,ncol(Xy)]),
+                       family = "gaussian", alpha = .5)
+#elastic net was the lowest by .00000586 (compared to Lasso)
+#unscaled data:
+unscale.lfit <- cv.glmnet(x = as.matrix(unscaled.df[,-c(1,ncol(unscaled.df))]), 
+                       y = as.matrix(unscaled.df[,ncol(unscaled.df)]),
+                       family = "gaussian", alpha = 1)
+#ridge
+unscale.rfit <- cv.glmnet(x = as.matrix(unscaled.df[,-c(1,ncol(unscaled.df))]), 
+                       y = as.matrix(Xy[,ncol(unscaled.df)]),
+                       family = "gaussian", alpha = 0)
+#elastic net
+unscale.efit <- cv.glmnet(x = as.matrix(unscaled.df[,-c(1,ncol(unscaled.df))]), 
+                       y = as.matrix(unscaled.df[,ncol(unscaled.df)]),
+                       family = "gaussian", alpha = .5)
+```
+#viewing results
+```{r}
+tmp_coeffs.ridge <- coef(ridge.fit, s = "lambda.min")
+tmp_df_ridge<-data.frame(
+  name = tmp_coeffs.ridge@Dimnames[[1]][tmp_coeffs.ridge@i + 1], 
+  coefficient = tmp_coeffs.ridge@x)
+ridge.results <- tmp_df_ridge %>% arrange(desc(abs(coefficient)))
+
+tmp_coeffs.lasso <- coef(lasso.fit, s = "lambda.min")
+tmp_df_lasso<-data.frame(
+  name = tmp_coeffs.lasso@Dimnames[[1]][tmp_coeffs.lasso@i + 1], 
+  coefficient = tmp_coeffs.lasso@x)
+lasso.results <- tmp_df_lasso %>% arrange(desc(abs(coefficient)))
+
+tmp_coeffs.elast <- coef(elastic.fit, s = "lambda.min")
+tmp_df_elast <- data.frame(
+  name = tmp_coeffs.elast@Dimnames[[1]][tmp_coeffs.elast@i + 1], 
+  coefficient = tmp_coeffs.elast@x)
+elastic.results <- tmp_df_elast %>% arrange(desc(abs(coefficient)))
+View(ridge.results);View(lasso.results);View(elastic.results)
+
+```
+#Ok now do it for real, with multiple lambda values (tuning parameter)
+#randomly divide a test and train set
+```{r}
+MSPE.net <- function(model, test.on = x.te) {
+  hats <- predict(model, s = "lambda.min", newx = test.on)
+  mean((Xy.te$y - hats)^2)
+}
+#set.seed(212)
+i <- sample(1:nrow(Xy),size = (nrow(Xy)/3),replace=FALSE)
+Xy.tr <- Xy[-i,]
+x.tr <- as.matrix(Xy.tr[,-c(1,grep("y",names(Xy.tr)))])
+y.tr <- as.matrix(Xy.tr[,grep("y",names(Xy.tr))])
+Xy.te <- Xy[i,]
+x.te <- as.matrix(Xy.te[,-c(1,grep("y",names(Xy.te)))])
+y.te <- as.matrix(Xy.te[,grep("y",names(Xy.te))])
+#fit 10 models, increasing lambda from 0 to 1 by .1
+#Elastic net occurs when lambda is between 0 and 1
+MSPEs <- NULL
+for (i in 0:10) {
+  assign(
+    paste("fit", i, sep=""),
+    cv.glmnet(x.tr, y.tr, alpha=i/10,family="gaussian")
+         )
+  mod <- get(paste("fit", i, sep=""), envir = .GlobalEnv)
+  MSPEs[i+1] <- MSPE.net(mod)
+}
+best <- which.min(MSPEs) #fit10 (Lasso) is the best!
+#```
+
+#plot lambda.min and alpha for each model
+#```{r}
+alpha <- seq(0,1,.1)
+lambda.mins <- NULL
+for (i in 1:length(alpha)) {
+  mod<-get(paste("fit", i-1, sep=""), envir = .GlobalEnv)
+  lambda.mins[i] <- mod$lambda.min
+}
+#persp(alpha, lambda.mins, MSPEs, phi = 45, theta = 45,
+#   xlab = "X Coordinate (feet)", ylab = "Y Coordinate (feet)",
+#   main = "Surface elevation data"
+# )
+plot(alpha, lambda.mins, main = best)
+```
+#Ok now do it for real, with multiple lambda values (tuning parameter)
+#randomly divide a test and train set
+```{r}
+#Re-run but take out the pwb variable
+#define function using nomenclature of the new data without pwb vars
+MSPE.net.no.pwb <- function(model, test.on = x.te.no.pwb) {
+  hats.no.pwb <- predict(model, s = "lambda.min", newx = test.on)
+  mean((Xy.te.no.pwb$y - hats.no.pwb)^2)
+}
+```
+#new datasets
+```{r}
+Xy.no.pwb <- Xy[-grep("pwb",names(Xy),ignore.case = TRUE)]
+```
+
+```{r}
+#create training and test sets (half and half)
+set.seed(212)
+i <- sample(1:nrow(Xy.no.pwb),size = (nrow(Xy.no.pwb)/2),replace=FALSE)
+Xy.tr.no.pwb <- Xy.no.pwb[-i,]
+x.tr.no.pwb <- as.matrix(Xy.tr.no.pwb[,-c(1,grep("y",names(Xy.tr.no.pwb)))])
+y.tr.no.pwb <- as.matrix(Xy.tr.no.pwb[,grep("y",names(Xy.tr.no.pwb))])
+Xy.te.no.pwb <- Xy.no.pwb[i,]
+x.te.no.pwb <- as.matrix(Xy.te.no.pwb[,-c(1,grep("y",names(Xy.te.no.pwb)))])
+y.te.no.pwb <- as.matrix(Xy.te.no.pwb[,grep("y",names(Xy.te.no.pwb))])
+```
+
+```{r}
+#fit 10 models, increasing lambda from 0 to 1 by .1
+#Elastic net occurs when lambda is between 0 and 1
+#repeat this whole thing 1000 times and take the average mse and 
+all.MSPEs <- matrix(rep(NA,times = 11*1000),ncol = 11)
+for (j in 1:1000) {
+set.seed(j)
+i <- sample(1:nrow(Xy.no.pwb),size = (nrow(Xy.no.pwb)/2),replace=FALSE)
+Xy.tr.no.pwb <- Xy.no.pwb[-i,]
+x.tr.no.pwb <- as.matrix(Xy.tr.no.pwb[,-c(1,grep("y",names(Xy.tr.no.pwb)))])
+y.tr.no.pwb <- as.matrix(Xy.tr.no.pwb[,grep("y",names(Xy.tr.no.pwb))])
+Xy.te.no.pwb <- Xy.no.pwb[i,]
+x.te.no.pwb <- as.matrix(Xy.te.no.pwb[,-c(1,grep("y",names(Xy.te.no.pwb)))])
+y.te.no.pwb <- as.matrix(Xy.te.no.pwb[,grep("y",names(Xy.te.no.pwb))])
+
+MSPEs.no.pwb <- NULL
+for (i in 0:10) {
+  assign(
+    paste("fit.no.pwb", i, sep=""),
+    cv.glmnet(x.tr.no.pwb, y.tr.no.pwb, alpha=i/10,family="gaussian"),
+    envir = .GlobalEnv
+         )
+  mod.no.pwb <- get(paste("fit.no.pwb", i, sep=""), envir = .GlobalEnv)
+  MSPEs.no.pwb[i+1] <- MSPE.net.no.pwb(mod.no.pwb)
+}
+all.MSPEs[j,] <- MSPEs.no.pwb
+}
+# alpha <- seq(0,1,.1)
+# lambda.mins.no.pwb <- NULL
+# for (i in 1:length(alpha)) {
+#   mod.no.pwb<-get(paste("fit.no.pwb", i-1, sep=""), envir = .GlobalEnv)
+#   lambda.mins.no.pwb[i] <- mod.no.pwb$lambda.min
+# }
+# all.lambda.mins <- c(all.lambda.mins, lambda.mins.no.pwb)
+
+
+#best.no.pwb <- which.min(MSPEs.no.pwb) #fit10 (Lasso) is the best!
+#```
+
+#plot lambda.min and alpha for each model
+#```{r}
+
+#persp(alpha, lambda.mins, MSPEs, phi = 45, theta = 45,
+#   xlab = "X Coordinate (feet)", ylab = "Y Coordinate (feet)",
+#   main = "Surface elevation data"
+# )
+#plot(alpha, lambda.mins.no.pwb, main = best.no.pwb)
+beep(3)
+mean.output <- apply(all.MSPEs, 2, mean)
+plot(alpha, mean.output)
+```
+
+```{r}
+#fit 10 models, increasing lambda from 0 to 1 by .1
+#Elastic net occurs when lambda is between 0 and 1
+#repeat this whole thing 1000 times and take the average mse and 
+all.MSPEs <- matrix(rep(NA,times = 11*1000),ncol = 11)
+for (j in 1:1000) {
+  set.seed(j)
+  i <- sample(1:nrow(Xy.no.pwb),size = (nrow(Xy.no.pwb)/2),replace=FALSE)
+  Xy.tr.no.pwb <- Xy.no.pwb[-i,]
+  x.tr.no.pwb <- as.matrix(
+    Xy.tr.no.pwb[,-c(1,grep("y",names(Xy.tr.no.pwb)))])
+  y.tr.no.pwb <- as.matrix(
+    Xy.tr.no.pwb[,grep("y",names(Xy.tr.no.pwb))])
+  Xy.te.no.pwb <- Xy.no.pwb[i,]
+  x.te.no.pwb <- as.matrix(
+    Xy.te.no.pwb[,-c(1,grep("y",names(Xy.te.no.pwb)))])
+  y.te.no.pwb <- as.matrix(Xy.te.no.pwb[,grep("y",names(Xy.te.no.pwb))])
+  MSPEs.no.pwb <- NULL
+  for (i in 0:10) {
+    MSPEs.no.pwb[i+1] <- MSPE.net.no.pwb(
+      cv.glmnet(x.tr.no.pwb, y.tr.no.pwb, 
+                alpha=i/10, family="gaussian")
+      )
+  }
+  all.MSPEs[j,] <- MSPEs.no.pwb
+  beepr::beep(2)
+}
+###
+beep(3)
+mean.output <- apply(all.MSPEs, 2, mean)
+plot(alpha, mean.output) #alpha = .9 is best
+hist(apply(all.MSPEs, 1, which.min)) #within test samples lasso wins
+```
+
+#interpret results of externally cross-validated model
+```{r}
+tmp_coeffs.fit10 <- coef(fit10, s = "lambda.min")
+tmp_df.fit10 <-data.frame(
+  name = tmp_coeffs.fit10@Dimnames[[1]][tmp_coeffs.fit10@i + 1], 
+  coefficient = tmp_coeffs.fit10@x)
+fit10.results <- tmp_df.fit10 %>% arrange(desc(abs(coefficient)))
+View(fit10.results)
+```
+Also, run the loop for the built-in 10-fold cross validated method, fitting the model on the whole dataset, rather than the "externally" validated third
+#Equivalent to just recording the MSE parameter from cv.glmnet function
+```{r}
+#fit 10 models, increasing lambda from 0 to 1 by .1
+#Elastic net occurs when lambda is between 0 and 1
+MSEs.fulldata <- NULL
+for (i in 0:10) {
+  assign(
+    paste("fulldata.fit", i, sep=""),
+    cv.glmnet(x = as.matrix(Xy[,-c(1,ncol(Xy))]),
+              y = as.matrix(Xy[,ncol(Xy)]),
+              alpha=i/10,family="gaussian")
+         )
+  mod <- get(paste("fulldata.fit", i, sep=""), envir = .GlobalEnv)
+  MSEs.fulldata[i] <- mean((Xy$y - predict(mod,
+                                           newx=as.matrix(Xy[,-c(1,ncol(Xy))]),
+                                           s = "lambda.min"))^2)
+}
+which.min(MSEs.fulldata) 
+```
+View the results
+```{r}
+tmp_coeffs.full5 <- coef(fulldata.fit5, s = "lambda.min")
+tmp_df.full5 <-data.frame(
+  name = tmp_coeffs.full5@Dimnames[[1]][tmp_coeffs.full5@i + 1], 
+  coefficient = tmp_coeffs.full5@x)
+full5.results <- tmp_df.full5 %>% arrange(desc(abs(coefficient)))
+View(full5.results)
+```
+
+#best glm with reduced data
+```{r}
+#select the top 30 predictors from the two best models
+var1.nam <- as.character(fit10.results$name[1:31]) #ensure results were already sorted!
+var1.nam <- var1.nam[-grep("Intercept", var1.nam)]
+var2.nam <- as.character(lasso.results$name[1:31]) #ensure results were already sorted!
+var2.nam <- var2.nam[-grep("Intercept", var2.nam)]
+
+#create smaller df from this short list for bestglm search:
+Xy.reduced.fit10 <- Xy[c(which(names(Xy) %in% var1.nam),grep("y",names(Xy)))]
+Xy.reduced.lassofit <- Xy[c(which(names(Xy) %in% var2.nam),grep("y",names(Xy)))]
+bestglm.fit10 <- bestglm(Xy.reduced.fit10)
+bestglm.fit10$BestModel$coefficients
+bestglm.lasso <- bestglm(Xy.reduced.lassofit)
+bestglm.lasso$BestModel$coefficients
+#The two came up with the same exact results (despite using different inputs)
+
+#smaller (final) subset from the sig variables from bestglm search:
+set1<-names(bestglm.fit10$BestModel$coefficients)[-1]
+f.best.fit10 <- as.formula(
+  paste("y ~", paste(names(Xy)[names(Xy) %in% set1], collapse = " + "))
+)
+lm.fit10.reduced <-lm(f.best.fit10, data = Xy) #run a linear model to get p-values
+
+#```
+#MSPE train to train for the reduced lm model
+#```{r}
+
+lm.fit10.reduced.mse<-mean(resid(lm(f.best.fit10, data = Xy.tr), newdata=Xy.te)^2)
+
+#```
+#which elasticnet/lasso/ridge beat best glm
+#```{r}
+plot(1:10,MSPEs,type="b",ylim=c(.0090,.0098))
+abline(h = lm.fit10.reduced.mse, lty = 2, col = "red") #All shrinkage methods prevail!
+```
+
+
+#which variables produce linear dependencies?
+```{r}
+largest.in.matrix = function(cor.matrix) {
+  R <- cor.matrix
+  diag(R) <- 0
+  R[lower.tri(R)] <- 0
+  column.number <- which.max(unlist(apply(R, 2, max)))
+  row.number <- which.max(unlist(apply(R, 1, max)))
+  return(cbind(row.number,column.number))
+}
+largest.in.matrix(cor(Xy[-1:-3]))
+```
+
+#search for correlations above .95
+```{r}
+cor_above.95 = function(cor.matrix) {
+  R <- cor.matrix
+  diag(R) <- 0
+  R[lower.tri(R)] <- 0
+  Rtf <- R > .95
+  Rtf <- as.data.frame(Rtf)
+  row.list <- lapply(Rtf, function(x) which(x > .95))
+  
+  # col.indices<-NULL
+  # for (i in 1:length(row.indices)) {
+  #   col.indices[i] <- which(Rtf[row.indices[i],])
+  # }
+  # var.1.name <- names(R[row.indices])
+  # var.2.name <- names(R[col.indices])
+  return(row.list)
+}
+cor.search <- cor_above.95(cor(Xy[-1:-3]))
+# which(unlist(lapply(cor.search, function(x) length(x) > 0)))
+#  C1PDEPAD  C1PCHM2N  C1PCHM2X C1SSATIS2  C1SBADL2  C1SCONS2  C1SSPCTR 
+#         5        22        24        26        41        66        85 
+# which(cor(Xy[-1:-3])["C1PDEPAD",] > .95)
+# C1PDEPAF C1PDEPAD 
+#        4        5 
+# which(cor(Xy[-1:-3])["C1PCHM2N",] > .95)
+# C1PCHM1N C1PCHM2N 
+#       21       22 
+# which(cor(Xy[-1:-3])["C1PCHM2X",] > .95)
+# C1PCHM1X C1PCHM2X 
+#       23       24 
+# which(cor(Xy[-1:-3])["C1SSATIS2",] > .95)
+#  C1SSATIS C1SSATIS2 
+#        25        26 
+# which(cor(Xy[-1:-3])["C1SBADL2",] > .95)
+# C1SBADL1 C1SBADL2 
+#       40       41 
+# which(cor(Xy[-1:-3])["C1SCONS2",] > .95)
+# C1SCONS1 C1SCONS2 
+#       65       66 
+# which(cor(Xy[-1:-3])["C1SSPCTR",] > .95)
+# C1SPERSI C1SSPCTR 
+#       82       85 
+#conclusion: remove the following
+remove.vars <- c("C1PDEPAF", "C1PCHM1N", "C1PCHM1X", "C1PCHM2X", "C1SSATIS",
+            "C1SBADL1", "C1SCONS1", "C1SPERSI")
+
+#convert var names to var indices
+var.indices <- unlist(lapply(remove.vars, function(x) grep(x, names(Xy))))
+Xy <- Xy[-var.indices]
+```
+#re-run analyses
+```{r}
+#[above]
+```
+
+

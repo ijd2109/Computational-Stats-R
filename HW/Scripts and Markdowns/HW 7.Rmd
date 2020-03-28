@@ -1,0 +1,31 @@
+---
+title: "HW 7 script"
+author: "Ian Douglas"
+date: "April 7, 2019"
+output: html_document
+---
+```{r}
+library(glmnet)
+attach(College)
+```
+#Part A
+```{r}
+set.seed(25)
+#randomize the test and train sets
+i <- sample(1:nrow(College), size=.5*nrow(College))
+train <- College[i,]
+test <- College[-i,]
+```
+#Part B
+```{r}
+#OLS models with numeric predictors only
+trainmod1 <- lm(Apps ~ .-Private, data = train)
+#Compute prediction error on test set
+MSPE.test <- mean(((test$Apps - predict(trainmod1, newdata=test)))^2)
+MSPE.test
+```
+#Part C
+```{r}
+glmnet::
+```
+

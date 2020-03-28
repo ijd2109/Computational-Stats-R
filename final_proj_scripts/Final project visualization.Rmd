@@ -1,0 +1,49 @@
+---
+title: "Final project visualization"
+author: "Ian Douglas"
+date: "5/19/2019"
+output: html_document
+---
+#Density plot of y variable
+```{r}
+densityplot(Xy$y, xlab = "`Purpose in Life` subscale of Psychological Well Being")
+```
+#plot results for the full set of predictors
+```{r}
+all.MSPEs <- readRDS("~/Desktop/Grad School/Columbia/Spring 2019/Computational Stats/Final Proj/results_with_pwb.rds")
+mean.output <- apply(all.MSPEs, 2, mean)
+freqs<-apply(all.MSPEs, 1, function(x) (which.min(x)-1)/10)
+alpha.seq<- seq(0,1,by=.1)
+par(mfrow = c(1,2))
+plot(alpha.seq, mean.output, main = expression(paste("Average MSE for each level of ", alpha, " across 1000 iterations")), 
+     xlab = expression(alpha), ylab = "Average MSE", type = "b")
+points(x = alpha.seq[which.min(mean.output)], 
+       y = min(mean.output),
+       pch=16, col = 1, cex = 1.5)
+abline(h = min(mean.output), lty= 2, lwd=2,col = 4)#alpha = .9 is best
+hist(freqs, breaks = seq(-.05,1.05,by=.1), 
+     main = expression(
+       paste(
+         "Frequency of given values of ",alpha," minimizing MSE")),
+     xlab = expression(alpha), ylab = "Frequency")
+```
+#plot results for the reduced set of predictors
+```{r}
+all.MSPEs.no.pwb <- readRDS("~/Desktop/Grad School/Columbia/Spring 2019/Computational Stats/Final Proj/results_no_pwb.rds")
+mean.output.no.pwb <- apply(all.MSPEs.no.pwb, 2, mean)
+freqs<-apply(all.MSPEs.no.pwb, 1, function(x) (which.min(x)-1)/10)
+alpha.seq<- seq(0,1,by=.1)
+par(mfrow = c(1,2))
+plot(alpha.seq, mean.output.no.pwb, main = expression(paste("Average MSE for each level of ", alpha, " across 1000 iterations")), 
+     xlab = expression(alpha), ylab = "Average MSE", type = "b")
+points(x = alpha.seq[which.min(mean.output.no.pwb)], 
+       y = min(mean.output.no.pwb),
+       pch=16, col = 1, cex = 1.5)
+abline(h = min(mean.output.no.pwb), lty= 2, lwd=2,col = 4)#alpha = .9 is best
+hist(freqs, breaks = seq(-.05,1.05,by=.1), 
+     main = expression(
+       paste(
+         "Frequency of given values of ",alpha," minimizing MSE")),
+     xlab = expression(alpha), ylab = "Frequency")
+```
+

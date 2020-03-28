@@ -1,0 +1,112 @@
+---
+title: "HW 10"
+author: "Oren Ross"
+date: "5/13/2019"
+output:
+  word_document: default
+  pdf_document: default
+  html_document: default
+---
+
+```{r}
+suppressPackageStartupMessages(library(neuralnet))
+suppressPackageStartupMessages(library(tidyverse))
+suppressPackageStartupMessages(library(bestglm))
+suppressPackageStartupMessages(library(MASS))
+#suppressPackageStartupMessages(library(devtools,
+#source_url('https://gist.githubusercontent.com/fawda123/7471137/raw/466c1474d0a505ff044412703516c34f1a4684a5/nnet_plot_update.r')))
+ 
+```
+#read in the data
+```{r}
+
+df10 <- read.table("http://users.stat.ufl.edu/~rrandles/sta4210/Rclassnotes/data/textdatasets/KutnerData/Appendix%20C%20Data%20Sets/APPENC07.txt")
+vnames <- c("sales.price", "sq.ft", "num.bed", "num.bath", 
+            "ac", "g.size", "pool", "year.build", "quality", 
+            "style", "l.size", "adj.hway")
+#Removing ID number
+df10 <- df10[,-1]
+names(df10) <- vnames
+#change unites of price variable in terms of dollars
+df10$sales.price <- (df10$sales.price/1000000)
+#rename y variable
+names(df10) <- c("y",names(df10)[-1])
+#Creating formula for RMSE
+rmse.nn <- function(model,test.on=test.df10) {
+  sqrt(mean((predict(model,newdata=test.on)-test.on[,"y"])^2))
+}
+#scale entire dataset
+maxs10 <- apply(df10, 2, max)
+mins10 <- apply(df10, 2, min)
+df10.scl <- as.data.frame(scale(df10, center = mins10, 
+                                scale = maxs10 - mins10))
+```
+
+
+a) Select a random sample of 300 observations to use as a training dataset.
+
+```{r}
+set.seed(6)
+ii <- sample(1:nrow(df10.scl), size = 300, replace = FALSE)
+train.df10 <- df10.scl[ii,]
+test.df10 <- df10.scl[-ii,]
+```
+
+b) Develop a neural network model for predicting sales price. Try your best to find a good number of hidden nodes and other tuning parameters.
+
+```{r}
+rmse.nn <- function(model, test.on=test.df10) {
+  sqrt(mean((predict(model, newdata=test.on)- test.on[,1])^2))
+}
+nn.results <- c()
+thresh <- seq(.009, .011,by = .001)
+for (i in 1:15) {
+  for (j in 1:length(thresh)){
+    model.nn <- neuralnet(
+      y ~ sq.ft + num.bed + num.bath +ac + g.size + pool
+      + year.build + quality + style +l.size + adj.hway,
+      train.df10, hidden = i, threshold = thresh[j]
+      )
+    rmse.tmp <- rmse.nn(model = model.nn)
+    nn.results <- c(nn.results, rmse.tmp)
+  }
+}
+best <- data.frame("layers"=rep(1:15,length.out=length(nn.results)),
+                   "threshold"=rep(thresh,length.out=length(nn.results)),
+                   "rmse" = nn.results)[which.min(nn.results),]
+best #13 layers at threshold .015; rmse = .0743
+```
+
+
+c) Assess your model's ability to predict and discuss its usefulness as a tool for predicting sales prices. (Here you need to use the test dataset.)
+```{r}
+best.net <- neuralnet(
+      y ~ sq.ft + num.bed + num.bath +ac + g.size + pool
+      + year.build + quality + style +l.size + adj.hway,
+      train.df10, hidden = 13, threshold = .015
+      )
+
+car::densityPlot(test.df10$y, col = "black",
+                 main = "Theoretical mean = ")
+lines(density(predict(best.net, newdata=test.df10)),col = "blue",
+      lty= 2, lwd = 3)
+
+```
+It looks like the neural net actuall underpredicts sales around the mean. Though, it is possible that this density plot has a poor bandwith.
+```{r}
+#to supplement, here is the mean and SD of the predicted and actual:
+data.frame(test.df10$y, predict(best.net, newdata=test.df10)) %>% apply(2, function(x) rbind(mean(x),sd(x)))
+```
+The mean of the predicted distribution is fairly accurate, as is the variance.
+
+d) Compare your neural network to a regression model with your choice of best subset selection method. Which model is easier to interpret?
+
+```{r}
+Xy.df10 <- data.frame(df10[-grep("y",names(df10))],df10$y)
+best.reg <- bestglm(Xy.df10)
+summary(best.reg$BestModel)
+(best.reg.lm <- lm(y ~ sq.ft+num.bed+num.bath+g.size+l.size, data = df10))
+```
+
+The neural net is nearly uninterpretable. In fact, it has zero interpretability relative to the linear model.
+

@@ -1,6 +1,8 @@
 ---
 title: "R Notebook"
-output: html_notebook
+output:
+  html_notebook: default
+  word_document: default
 ---
 #Introduction   
 
@@ -146,13 +148,23 @@ In this case this comes out to 2/99 = .02; and sqrt(.02) = .14, the SD obtained.
  Choose the distance by which each iteration will reduce the length of the interval
 
  Ending distances can thus be (1 - distance)^N by the the Nth iteration.
- Set up the function of f, starting interval, and ending length (distance)   
+ Set up the function of f, starting interval, and ending length (distance)
+ 
  
 ####Summary: 
   -Compares the value of $f(x)$ at ends of a random interval [a, b]
   -If $f(a) > f(b)$, constrict the next search interval to [a, $\frac{b-a}{2}$]
   -End when $f(a)=f(b)$ (or when f(a) - f(b) is very near zero. 
-
+  -Formula for number of iterations:
+```{r}
+rho <- 2-sqrt(5)/2 ###THIS IS THE GOLDEN RATIO
+precision <- 1e-6 #some VERY small number
+int <- c(-5,5)#starting interval in which you think the minima exists
+ceiling(log(precision/(diff(int)))/log(1-rho))
+#CEILING FUNCTION WILL Round up to the nearest Integer
+```
+$$CEILING of \frac{log("precision")}{log("golden.ratio"))}$$
+  
 
 ###Method 2: Bisection [USES f(x) and f'(x)]
 1. f(x) must be unimodal
@@ -169,6 +181,8 @@ b) stopping when f'(x) = 0.
 point evaluate, assesses the direction of the slope (+/-), and if negative
 chooses to evaluate f'(x) at a point further right, and as point further left
 if the slope of f'(x) was posiitive.
+###Formula for iteration count
+$$CEILING of \frac{log("precision")}{log(.5))}$$
 
 ###Method 3: Newton's method
 1. Given $f(x)$, define $q(x)$ such that at $x_i$:
@@ -205,6 +219,24 @@ $$x =.5- \frac{4(.5)^3-42(.5)^2+120(.5)-70}{12(.5)^2-84(.5)+120}$$
 $$x = .5-\frac{-20}{81} = .75$$
 
 Thus, $x = .75$, when $q'(x) = 0$, given that $q(x)$ was constructed with $f(x_=.5)$
+
+###USING R FUNCTIONS
+1. optimize
+```{r}
+#uses function, and a range to search
+#FINDS A MINIMUM(default) OR MAX depending on argument "maximum"
+#optimize(f, lower = 4, upper = 15, maximum = TRUE)
+```
+2. Optim
+```{r}
+#uses the log-likelihood function
+#FINDS A MINIMUM
+#CAN BE USED WITH A TWO VARIABLE DIST if you set each variable
+#To a different column of the one x variable in the function,
+#then pass it through the optim function
+#optim(c(1,1), func)
+```
+
 
 3. The Newton method then takes .75 as the new "$x_i$" [or "$x_i+1$"], and repeats the process until q'(x) is minimized.
 ###In R
@@ -279,4 +311,96 @@ This method is identical to the Newton method, except that when calculating the 
 $$x_{i+1} = x_i - \frac{x_i - x_{i-1}}{f(x_i) - f(x_{i-1})}f(x_i)$$
    
       
-#Topic 4: 
+#Topic 4: Resampling (not bootstrap)
+Idea: 
+-Re-sample a portion ("training set") of observed data
+-Fit a model.
+-Compute the Mean Squared Prediciton Error
+-Use the model to predict on the rest of your data ("test") portion
+-Recompute the Mean Squared Prediction Error.
+
+   Two ways to produce these results:
+  1. LOOCV
+    a. Take one row of data "out"
+    b. Fit the model
+    c. Predict that one left-out line
+  2. K-fold CV
+    a. Split the data into k portions (say 3)
+    b. use k = 1 as "training"
+    c. Test the model on 2+3
+    d. Repeat with "train" being k = 2, k=3... k=k
+  Comparison:
+    a. LOOCV has greater bias reduction
+    b. k-fold reduces variability
+    c. When K = exactly 5, or K= 10, it is emprically shown to be preferred
+       
+       
+###Formulas for MSPE:
+For k-fold CV:
+```{r}
+#mean(predict("model", newdata = test) - test$y)^2
+```
+$$MSPE_k = \frac{1}{n_k}\sum_{i=1}^k (y_{hat}-y_i)^2$$
+   
+   This describes when you use the model fit on "training", but $y_i$ are
+the y values from the "test" dataset.
+NOTICE: summation is over k-folds.
+
+For the LOOCV method.
+```{r}
+#ordinary mean squared residuals, but each obtained when we left out
+#one of the n observations.
+#mean(predict("model") - test$y)^2
+```
+$$MSPE =\frac{1}{n} \sum_{i=1}^n (y_{hat}-y_i)^2$$
+NOTICE: here the summation is over n, because we obtain MSE once
+for each time we left out each of the n observations at a time.
+   
+#Topic 5: Bootstrap
+Idea:
+1. Re-sample WITH replacement
+2. re-run your test statistic
+3. check its SE using the formula:
+$$SE = \sqrt{\frac{1}{B-1}\sum_{r=1}^B[µ^* -mean(µ^*)]}$$
+   
+   Here, the $µ^*$ are the estimates of the test stat from each of the bootstrap samples.
+   
+   #Topic 6: 2-SAMPLE non-parametric Permutation Test
+1. If $x_i...x_n ~ F_{dist}$ and $y_i...y_n ~ G_{dist}$, we can test if
+$$H_0: F = G$$ 
+Vs. 
+$$H_1:F ≠ G$$
+Even when we don't know the distribution parameters of F and G
+
+To do compare them: define Z such that 
+$$Z = (x_i...x_n,y_i...y_n)$$
+
+And sample randomly from $Z$ to get $z^*$; the results should be a normal distribution
+
+$Z^*$ [a random sample or permutation from z] should be random regardless 
+of whether the elements of $z^*$ came originally from $x$ or $y$.
+TYPICALLY, you sample the first $n$ elements for $Z^*$ come from $x$, & the next
+$n$ come from $y$.
+
+NOTE: there are a total (n + m) choose (n) ways to sample
+NOTE: This is equivalent to resampling without replacement
+
+NEXT: Define a test statistic $Ω(x,y)$
+1. Compute it from $Z$ [full z sample]
+2. Generate R permutations of z
+3. Compute $Ω(x,y)$ for each permutation
+4. Compute p-value of the test statistic from the permutations
+
+ASSUMPTIONS of test:
+1. You don't have to assume that x and y (F and G) were normally dist.
+2 Test statistic is going to be "T"
+$$t=\frac{abs(µ_x - µ_y)}{\sqrt{\frac{s_x^2}{n}\frac{s_y^2}{m}}}$$
+
+3. Since this $t$ is not normal, we have no table.
+4. Instead make many $t$ statistics from the many permutations of $Z$
+5. compute the p-value from the histogram of the resulting density of $t$
+6. IF the t-value that results from the theta.hat we got from the 
+permutations is greater than whatever the t at 95% would be from this
+actual density.
+
+#Density Estimation

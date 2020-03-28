@@ -1,0 +1,119 @@
+---
+title: "comp stats final project"
+author: "Ian Douglas"
+date: "5/13/2019"
+output: html_document
+---
+```{r, message=FALSE, results='hide'}
+rm(list = ls())
+require(tidyverse)
+require(prettyR)
+```
+
+#load data
+```{r}
+load("~/Desktop/Grad_School/Columbia/Masters Thesis/MIDUS 3/DATA/36346-0001-Data.rda")
+#rename the dataframe
+DATA <- da36346.0001
+```
+#retain desired variables
+```{r}
+psy.code <- file.choose() #"~/Desktop/Grad_School/Columbia/Masters Thesis/psych constructs.rtf"
+
+#from copying and pasting the text from the psych constructs codebook
+txt <- readChar(psy.code,nchars = file.info(psy.code)$size)
+
+#locate pairs of opening and closing brackets:
+start.stop.mat <- cbind(str_locate_all(txt, "\\[")[[1]][,1],
+                        str_locate_all(txt, "\\]")[[1]][,1])
+#add 1 to start and subtract 1 from start to remove the bracket itself
+start.stop.mat <- start.stop.mat + matrix(c(rep(1,times=nrow(start.stop.mat)),
+                                            rep(-1,times=nrow(start.stop.mat))),
+                                          ncol = 2)
+v.names <- c()
+for (i in 1:nrow(start.stop.mat)) {
+  v.names[i] <- substr(txt, 
+                       start= start.stop.mat[i,1],
+                       stop = start.stop.mat[i,2])
+}
+varnames = unique(v.names)
+#add to it the identifying variable names
+varnames <- c(names(DATA)[c(grep("m2id",names(DATA),ignore.case = TRUE),
+                            grep("rsex$",names(DATA),ignore.case = TRUE),
+                            grep("rage",names(DATA),ignore.case = TRUE))],
+              varnames)
+DATA.1 <- DATA[,names(DATA)[names(DATA) %in% varnames]]
+#for some reason this variable was missed:
+missed.var <- c("C1SMPQSC")
+DATA.1 <- data.frame(DATA.1, DATA[,grep(missed.var,names(DATA))])
+#variables missing over 50% of data across all subjects
+missing.half<-which(as.vector(apply(DATA.1,2,function(x) sum(is.na(x))/nrow(DATA.1))) >= .50)
+DATA.2 <- DATA.1[,-missing.half]
+names(DATA.2) <- c(names(DATA.2)[1:(ncol(DATA.2)-1)], "C1SMPQSC")
+```
+
+#convert labelled factor variables to their numeric codes
+```{r}
+#run the factor 2 numeric script from the data-source
+fact2num.midus<- function(x) {
+  add.value.labels(as.numeric(sub("^\\(0*([0-9]+)\\).+$", "\\1", x))
+    ,sub("^\\([0-9]+\\) +(.+$)", "\\1", sort(levels(x))))
+}
+#run the above function inside an apply function by column
+#run this only on columns that have labels. search for `()`
+labelled <- c(
+  which(as.vector(unlist(apply(DATA.2, 2, function(x) any(grepl("\\(", x))))))
+  )
+DATA.3 <- DATA.2
+DATA.3[,labelled] <- apply(DATA.3[labelled], 2,fact2num.midus)
+```
+
+#remove subjects missing over 33% of their data
+```{r}
+missing.subj<- matrix(as.vector(unlist(apply(DATA.3, 1, function(x) sum(is.na(x))/ncol(DATA.3)))),ncol = 1)
+missing.subj<-cbind(missing.subj,missing.subj >= .33)
+names(missing.subj) <- c("prcnt","boolean")
+DATA.4 <- data.frame(DATA.3,missing.subj) %>% filter(boolean == 0)
+#retain only the 728 participants for whom almost all the data was collected
+DATA.5 <- DATA.4[DATA.4$prcnt < .0001,] #N = 728
+#also, N will be 1239 if keep participants missing only a little more data:
+DATA.013 <- DATA.4[DATA.4$prcnt < .013,]
+```
+#read in the cleaned data (and imputed)
+```{r}
+DF <- readRDS(file.choose())
+#convert factors back to numeric for scaling
+DF1 <- DF %>% mutate_at(c(which(classes=="factor")),as.character) %>%
+  mutate_all(as.numeric)
+#rename y = C1SPWBU2
+names(DF1) <- c(names(DF1)[1:62], "y", names(DF1)[64:ncol(DF1)])
+#remove the subscale of the y variable
+rm<- grep("C1SPWBU1", names(DF1))
+DF2 <- DF1[,-rm]
+#also remove subscales of PWB composite scores
+rm2 <- grep("PWB[A-Z]1", names(DF2))
+DF3 <- DF2[,-rm2]
+#reorder so the y variable is last
+DF4 <- DF3[,c(1:56,58:(ncol(DF3)),57)] #y was column 57
+#scale the data
+maxs <- apply(DF4, 2, max)
+mins <- apply(DF4, 2, min)
+Xy <- as.data.frame(scale(DF4, center = mins, scale = maxs - mins))
+```
+#run lasso and ridge
+```{r}
+#also note, exclude the ID variable
+lasso.fit <- cv.glmnet(x = as.matrix(Xy[,-c(1,ncol(Xy))]), 
+                       y = as.matrix(Xy[,ncol(Xy)]),
+                       family = "gaussian", alpha = 1)
+#ridge
+ridge.fit <- cv.glmnet(x = as.matrix(Xy[,-c(1,ncol(Xy))]), 
+                       y = as.matrix(Xy[,ncol(Xy)]),
+                       family = "gaussian", alpha = 0)
+```
+#bestglm
+```{r}
+best.fit <- bestglm(Xy, IC = "CV", CVargs = list(Method="CVHTM",K=10,REP = 1000))
+```
+
+

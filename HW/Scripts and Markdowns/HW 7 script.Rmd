@@ -1,0 +1,85 @@
+---
+title: "HW 7"
+author: "Ian Douglas"
+date: "4/7/2019"
+output:
+  word_document: default
+  html_document: default
+---
+```{r}
+library(glmnet)
+library(ISLR)
+attach(College)
+```
+#Part A
+```{r}
+set.seed(25)
+#randomize the test and train sets
+i <- sample(1:nrow(College), size=.5*nrow(College))
+train <- College[i,]
+test <- College[-i,]
+mean(train$Apps)
+mean(test$Apps)
+```
+#Part B
+```{r}
+#OLS models with numeric predictors only
+trainmod1 <- lm(Apps ~ .-Private, data = train)
+#Compute mean prediction error on test set
+MSPE.test <- mean(((predict(trainmod1, newdata=test) - test$Apps))^2)
+MSPE.test
+mean.prediction.error.test <- sqrt(MSPE.test)
+mean.prediction.error.test
+```
+#Part C
+```{r}
+#Scale predictors before running ridge regression
+X <- apply(College[3:ncol(College)], 2, 
+           function(x) x/mean((x-mean(x))^2))
+Y <- as.matrix(College[,2])
+colnames(X) <- names(College)[3:ncol(College)]
+colnames(Y) <- names(College)[2]
+X.train.scaled <- X[i,]
+X.test.scaled <- X[-i,]
+#run the Ridge reression (alpha = 0), and use the cv.glmnet
+#function to simultaneously select the optimal lambda parameter
+ridge1 <- cv.glmnet(x = X.train.scaled, y = Y[i,],
+          family = "gaussian", alpha = 0)
+#Compute MSPE on test set
+MSPE.test.ridge <- mean(
+  ((predict(ridge1, newx = X.test.scaled, s = "lambda.min")
+    - Y[-i,]))^2
+  )
+MSPE.test.ridge
+mean.prediction.error.ridge <- sqrt(MSPE.test.ridge)
+mean.prediction.error.ridge
+```
+#Part D
+```{r}
+#repeat part C with the lasso
+lasso1 <- cv.glmnet(x = X.train.scaled, y = Y[i,],
+          family = "gaussian", alpha = 1)
+#Compute MSPE on test set
+MSPE.test.lasso <- mean(
+  ((predict(lasso1, newx = X[-i,], s = "lambda.min")
+    - Y[-i,]))^2
+  )
+MSPE.test.lasso
+mean.prediction.error.lasso <- sqrt(MSPE.test.lasso)
+mean.prediction.error.lasso
+```
+
+#Part E
+```{r}
+#Compute R^2 for each
+OLS <- summary(trainmod1)$r.squared
+ridge <- ridge1$glmnet.fit$dev.ratio[which(ridge1$glmnet.fit$lambda == ridge1$lambda.min)]
+lasso <- lasso1$glmnet.fit$dev.ratio[which(lasso1$glmnet.fit$lambda == lasso1$lambda.min)]
+R2 <- cbind(OLS,ridge,lasso)
+colnames(R2) <- c("OLS","ridge","lasso")
+R2
+```
+
+#Part F
+The $R^2$ for the Lasso regression was comparable to that of the OLS model, and both were closer to 1 than that of the ridge model. This pattern was also observed for the mean squared prediction error across the three models, however across both the measure of fit ($R^2$) and prediction (MSPE) the OLS model performed the best.
+

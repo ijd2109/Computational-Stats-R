@@ -50,7 +50,7 @@ contain the actual minimum of the negative log-likelihood function. In that case
    
    
 ###Question 2    
-Use any multivariate method to maxime the target function with
+Use any multivariate method to maximize the target function with
 starting points x1 = 0 and x2 = 3
 ```{r}
 #Target function

@@ -1,0 +1,49 @@
+---
+title: "HW 9 script"
+author: "Ian Douglas"
+date: "5/6/2019"
+output: html_document
+---
+#Question 1
+```{r}
+library(ISLR)
+attach(Hitters)
+```
+
+##Part A
+```{r}
+d <- Hitters[is.na(Hitters$Salary) == F,]
+d$logSal <- log(d$Salary)
+mean(d$logSal)
+```
+
+##Part B
+```{r}
+i <- 1:200
+d.train <- d[i,]; d.test <- d[-i,]
+list(train.mean.log.Salary = mean(d.train$logSal), test.mean.log.Salary = mean(d.test$logSal))
+```
+
+##Part C [Note: tree package not available on Mac R version 3.6]
+```{r}
+library(rpart)
+tree.train <- rpart(logSal ~ .-Salary, data = d.train)
+library(rpart.plot)
+rpart.plot(tree.train)
+```
+
+#"Residual Mean Deviance" on training set; RMSE on test
+```{r}
+TRD <- sum((predict(tree.train) - d.train$logSal)^2) #total residual dev
+num.term.nodes <- 8
+n.train <- nrow(d.train)
+RMD <- TRD/(n.train - num.term.nodes) 
+RMSE.test <- sqrt(mean((predict(tree.train, newdata = d.test) - d.test$logSal)^2))
+list(RMD.on.train = RMD, RMSE.on.test = RMSE.test)
+```
+
+##Part D
+```{r}
+
+```
+

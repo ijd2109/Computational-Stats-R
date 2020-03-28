@@ -1,0 +1,156 @@
+---
+title: "HW 6 script"
+author: "Ian Douglas"
+date: "3/30/2019"
+output:
+  word_document: default
+  html_document: default
+---
+#Question 1
+##Part A
+```{r}
+n <- 30
+set.seed(63)
+x <- runif(n, 0.5, 6)
+y <- exp(x) + rnorm(n, sd = 6)
+plot(x,y)
+```
+   
+###This does not look like a linear relationship   
+
+##Part B
+```{r}
+Pearson <- cor(x,y)
+Spearman <- cor(x,y, method = "spearman")
+out <- cbind(Pearson, Spearman)
+sprmn<-out[,2]
+out
+```
+
+##Part C
+```{r}
+#recalculate the Spearman correlation 9999 times
+z <- c(x,y)
+R <- 9999
+n <- length(x)
+K <- 1:length(z)      
+reps <- numeric(R)
+for (i in 1:R) {
+  k <- sample(K, size = n, replace = FALSE)
+  x1 <- z[k]
+  y1 <- z[-k]      
+  reps[i] <- cor(x1, y1, method = "spearman")
+}
+hist(reps)
+```
+
+##Part D
+```{r}
+p.val <- mean(c(sprmn, abs(reps) >= sprmn))
+p.val
+```
+   
+###Based on these findings I reject the Null hypothesis that the samples are independent.
+This is because the observed p-value from the original sample is highly unlikely to have
+come from the population of permutation samples, for which independence is assumed. Thus,
+the original sample breaks this assumption of independence.
+
+##Part #E
+```{r}
+cor.test(x, y, method="spearman")
+```
+###the p-value derived from the permutation test is slightly larger, though it would have been even smaller if there had been more replications, because the expression:
+```{r, eval = F}
+abs(reps) >= sprmn #Note: sprmn = .963515 is rho of the original sample
+```
+   
+   was a vector of all `FALSE`; thus the p-value would be larger with more replications.
+   
+#Question 2
+##Part A
+```{r}
+#simulate data
+set.seed(437)
+x <- rnorm(n=200)
+e <- rnorm(n=200)
+par(mfrow=c(1,2))
+hist(x,main = "Distribution of x")
+hist(e,main = "Distribution of error terms")
+```
+
+####They look approximately normal.   
+
+##Part B
+####generate Y using
+$$Y = \beta_0 + \beta_1X + \beta_2X^2 + \beta_3X^3 + e$$
+```{r}
+B <- matrix(rpois(n=4,lambda=4),ncol=1)
+Y <- B[1,] + B[2,]*x +B[3,]*x^2 + B[4,]*x^3 + e
+plot(x,Y, main = paste("rho =",cor(x,Y,method="spearman")))
+```
+
+##Part C
+```{r}
+#best polynomial search using bestglm with BIC and AIC
+#Create dataframe of predictors: {x^1,x^2,...,x^15}
+X <- matrix(rep(0,times = 200*15),ncol = 15)
+for (i in 1:15) {
+  X[,i] <- x^i
+}
+#attach Y
+df <- as.data.frame(cbind(X,Y))
+names(df) <- c(names(df)[1:ncol(df)-1], "y")
+library(bestglm)
+bestBIC <- bestglm(df, IC="BIC")
+bestAIC <- bestglm(df, IC = "AIC")
+```
+###Best model according to BIC:
+```{r}
+bestBIC$BestModel
+```
+###Best model according to AIC:
+```{r}
+bestAIC$BestModel
+```
+###Plots
+```{r}
+par(mfrow=c(1,2))
+plot(bestBIC$Subsets$BIC, main = "BIC",type="b")
+abline(h = min(bestBIC$Subsets$BIC), col = 2, lty = 2)
+plot(bestAIC$Subsets$AIC, main = "AIC",type="b")
+abline(h = min(bestAIC$Subsets$AIC), col = 2, lty = 2)
+```
+###Conclusion
+###The BIC identifies the following 3-predictor model (plus the intercept):
+$$Y_{hat}=2.904+2.035X+4.010X^2+2.011X^3$$
+###The AIC identifies the following 7-predictor model (plus the intercept):
+$$Y=2.849+1.668X+4.117X^2+2.362X^3-0.0002X^{10}-0.007X^{11}+0.002X^{13}-0.0001X^{15}$$
+
+##Part D
+```{r}
+#run the stepAIC function to identify best models
+library(MASS)
+min.mod <- lm(y ~ 1, data = df)
+max.mod <- lm(y ~ ., data = df)
+scp <- list(lower = min.mod, upper = max.mod)
+fwdBIC <- stepAIC(min.mod,
+                  direction = 'forward',
+                  scope = scp,
+                  k = log(200))
+fwdAIC <- stepAIC(min.mod,
+                  direction = 'forward',
+                  scope = scp)
+```
+###The output shows that the two methods did come to different results.   
+###That said, they confirm the importance of the cubed term:
+```{r}
+#BIC used in forward stepwise selection results in:
+fwdBIC$coefficients
+```
+
+```{r}
+#AIC used in forward stepwise selection results in:
+fwdAIC$coefficients
+```
+
+
